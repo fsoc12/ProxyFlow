@@ -1,0 +1,14 @@
+﻿{
+  "manifest_version": 3,
+  "name": "ProxyFlow Pro",
+  "version": "2.0.1",
+  "description": "Professional proxy manager with intuitive interface",
+  "permissions": ["proxy", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
