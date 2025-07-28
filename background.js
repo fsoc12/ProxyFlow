@@ -5,8 +5,8 @@ const DEFAULT_STATE = {
   connectionStatus: "disconnected",
   lastPing: null
 };
+let pingInterval = null;
 
-// Улучшенная загрузка состояния
 async function loadState() {
   try {
     const data = await chrome.storage.local.get(PROXY_STORAGE_KEY);
@@ -17,7 +17,6 @@ async function loadState() {
   }
 }
 
-// Оптимизированное сохранение состояния
 async function saveState(state) {
   try {
     await chrome.storage.local.set({[PROXY_STORAGE_KEY]: state});
@@ -29,151 +28,58 @@ async function saveState(state) {
   }
 }
 
-// Инициализация
-chrome.runtime.onInstalled.addListener(async () => {
-  const state = await loadState();
-  await saveState(state);
+function startPingInterval() {
+  if (pingInterval) clearInterval(pingInterval);
   
+  pingInterval = setInterval(async () => {
+    const state = await loadState();
+    if (state.connectionStatus !== "connected") return;
+    
+    try {
+      const testResult = await testConnection();
+      if (testResult.status === "connected") {
+        await saveState({...state, lastPing: testResult.ping});
+      }
+    } catch (error) {
+      console.log("Ping error:", error);
+    }
+  }, 30000);
+}
+
+async function initializeProxy() {
+  const state = await loadState();
   if (state.activeProfileId) {
     const profile = state.profiles.find(p => p.id === state.activeProfileId);
     if (profile) {
       try {
         await applyProxy(profile);
+        const testResult = await testConnection();
+        await saveState({
+          ...state,
+          connectionStatus: testResult.status === "connected" ? "connected" : "error",
+          lastPing: testResult.ping
+        });
       } catch (error) {
-        console.error("Failed to apply proxy on install:", error);
+        console.error("Failed to apply proxy:", error);
+        await saveState({...state, activeProfileId: null, connectionStatus: "disconnected"});
       }
     }
   }
-});
-
-// Восстановление при запуске
-chrome.runtime.onStartup.addListener(async () => {
-  const state = await loadState();
-  if (state.activeProfileId) {
-    const profile = state.profiles.find(p => p.id === state.activeProfileId);
-    if (profile) {
-      try {
-        await applyProxy(profile);
-      } catch (error) {
-        console.error("Failed to apply proxy on startup:", error);
-      }
-    }
-  }
-});
-
-// Обработчик сообщений
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  const handlers = {
-    "TOGGLE_PROXY": () => handleProxyToggle(msg.profileId).then(sendResponse),
-    "SAVE_PROFILE": () => saveProfile(msg.profile).then(sendResponse),
-    "DELETE_PROFILE": () => deleteProfile(msg.profileId).then(sendResponse),
-    "TEST_CONNECTION": () => testConnection().then(sendResponse),
-    "GET_PROXY_DATA": () => loadState().then(sendResponse)
-  };
-
-  if (handlers[msg.type]) {
-    handlers[msg.type]();
-    return true;
-  }
-});
-
-// Основные функции
-async function handleProxyToggle(profileId) {
-  const state = await loadState();
-  
-  // Отключение прокси
-  if (state.activeProfileId === profileId) {
-    try {
-      await chrome.proxy.settings.clear({scope: "regular"});
-    } catch (error) {
-      console.error("Failed to clear proxy settings:", error);
-      return {error: "Failed to disconnect proxy"};
-    }
-    
-    state.activeProfileId = null;
-    state.connectionStatus = "disconnected";
-    state.lastPing = null;
-    await saveState(state);
-    return {status: "disabled"};
-  } 
-  // Включение прокси
-  else {
-    const profile = state.profiles.find(p => p.id === profileId);
-    if (!profile) return {error: "Profile not found"};
-    
-    try {
-      await applyProxy(profile);
-    } catch (error) {
-      console.error("Proxy activation error:", error);
-      return {error: "Failed to connect. Check proxy settings."};
-    }
-    
-    state.activeProfileId = profileId;
-    state.connectionStatus = "connecting";
-    await saveState(state);
-    
-    return {status: "enabled"};
-  }
+  startPingInterval();
 }
 
-async function saveProfile(profile) {
-  const state = await loadState();
-  
-  // Валидация данных
-  if (!profile.name || !profile.host || !profile.port) {
-    return {error: "Name, host and port are required"};
-  }
-  
-  // Проверка порта
-  const port = parseInt(profile.port);
-  if (isNaN(port) || port <= 0 || port > 65535) {
-    return {error: "Invalid port number (1-65535)"};
-  }
-  
-  // Обновление существующего профиля
-  const index = state.profiles.findIndex(p => p.id === profile.id);
-  if (index !== -1) {
-    state.profiles[index] = profile;
-  } 
-  // Создание нового профиля
-  else {
-    profile.id = Date.now().toString();
-    state.profiles.push(profile);
-  }
-  
-  await saveState(state);
-  return {success: true, profileId: profile.id};
-}
-
-async function deleteProfile(profileId) {
-  const state = await loadState();
-  
-  // Отключение если удаляется активный профиль
-  if (state.activeProfileId === profileId) {
-    try {
-      await chrome.proxy.settings.clear({scope: "regular"});
-    } catch (error) {
-      console.error("Failed to clear proxy settings:", error);
-    }
-    
-    state.activeProfileId = null;
-    state.connectionStatus = "disconnected";
-    state.lastPing = null;
-  }
-  
-  state.profiles = state.profiles.filter(p => p.id !== profileId);
-  await saveState(state);
-  return {success: true};
-}
-
-function applyProxy(config) {
+async function applyProxy(config) {
   return new Promise((resolve, reject) => {
-    const {host, port, username, password} = config;
-    
-    // Кодирование учетных данных
-    const proxyHost = username && password 
-      ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}` 
-      : host;
+    const port = parseInt(config.port);
+    if (isNaN(port) || port <= 0 || port > 65535) {
+      reject(new Error("Invalid port number"));
+      return;
+    }
+
+    let proxyHost = config.host;
+    if (config.username && config.password) {
+      proxyHost = `${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${proxyHost}`;
+    }
 
     chrome.proxy.settings.set({
       value: {
@@ -182,7 +88,7 @@ function applyProxy(config) {
           singleProxy: {
             scheme: "http",
             host: proxyHost,
-            port: parseInt(port)
+            port: port
           },
           bypassList: ["<local>"]
         }
@@ -217,3 +123,138 @@ async function testConnection() {
     return {status: "error", error: error.message};
   }
 }
+
+async function handleProxyToggle(profileId) {
+  const state = await loadState();
+  
+  if (state.activeProfileId === profileId) {
+    try {
+      await chrome.proxy.settings.clear({scope: "regular"});
+    } catch (error) {
+      console.error("Failed to clear proxy settings:", error);
+      return {error: "Failed to disconnect proxy"};
+    }
+    
+    const newState = {
+      ...state,
+      activeProfileId: null,
+      connectionStatus: "disconnected",
+      lastPing: null
+    };
+    await saveState(newState);
+    return {status: "disabled"};
+  } 
+  else {
+    const profile = state.profiles.find(p => p.id === profileId);
+    if (!profile) return {error: "Profile not found"};
+    
+    try {
+      await applyProxy(profile);
+    } catch (error) {
+      console.error("Proxy activation error:", error);
+      return {error: "Failed to connect. Check proxy settings."};
+    }
+    
+    const newState = {
+      ...state,
+      activeProfileId: profileId,
+      connectionStatus: "connecting"
+    };
+    await saveState(newState);
+    
+    // Test connection after short delay
+    setTimeout(async () => {
+      try {
+        const testResult = await testConnection();
+        const updatedState = await loadState();
+        await saveState({
+          ...updatedState,
+          connectionStatus: testResult.status === "connected" ? "connected" : "error",
+          lastPing: testResult.ping
+        });
+      } catch (error) {
+        console.error("Connection test failed:", error);
+      }
+    }, 1500);
+    
+    return {status: "enabled"};
+  }
+}
+
+async function saveProfile(profile) {
+  const state = await loadState();
+  
+  if (!profile.name || !profile.host || !profile.port) {
+    return {error: "Name, host and port are required"};
+  }
+  
+  const port = parseInt(profile.port);
+  if (isNaN(port) || port <= 0 || port > 65535) {
+    return {error: "Invalid port number (1-65535)"};
+  }
+  
+  const existingIndex = state.profiles.findIndex(p => p.id === profile.id);
+  const newProfile = {...profile, port: port.toString()};
+  
+  if (existingIndex !== -1) {
+    state.profiles[existingIndex] = newProfile;
+    
+    // Update active profile if edited
+    if (state.activeProfileId === profile.id) {
+      try {
+        await applyProxy(newProfile);
+      } catch (error) {
+        console.error("Failed to update active profile:", error);
+      }
+    }
+  } else {
+    newProfile.id = Date.now().toString();
+    state.profiles.push(newProfile);
+  }
+  
+  await saveState(state);
+  return {success: true, profileId: newProfile.id};
+}
+
+async function deleteProfile(profileId) {
+  const state = await loadState();
+  
+  if (state.activeProfileId === profileId) {
+    try {
+      await chrome.proxy.settings.clear({scope: "regular"});
+    } catch (error) {
+      console.error("Failed to clear proxy settings:", error);
+    }
+  }
+  
+  const newState = {
+    profiles: state.profiles.filter(p => p.id !== profileId),
+    activeProfileId: state.activeProfileId === profileId ? null : state.activeProfileId,
+    connectionStatus: state.activeProfileId === profileId ? "disconnected" : state.connectionStatus,
+    lastPing: state.activeProfileId === profileId ? null : state.lastPing
+  };
+  
+  await saveState(newState);
+  return {success: true};
+}
+
+// Initialize
+chrome.runtime.onInstalled.addListener(initializeProxy);
+chrome.runtime.onStartup.addListener(initializeProxy);
+startPingInterval();
+
+// Message handler
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  const handlers = {
+    "TOGGLE_PROXY": () => handleProxyToggle(msg.profileId).then(sendResponse),
+    "SAVE_PROFILE": () => saveProfile(msg.profile).then(sendResponse),
+    "DELETE_PROFILE": () => deleteProfile(msg.profileId).then(sendResponse),
+    "TEST_CONNECTION": () => testConnection().then(sendResponse),
+    "GET_PROXY_DATA": () => loadState().then(sendResponse)
+  };
+
+  if (handlers[msg.type]) {
+    handlers[msg.type]();
+    return true;
+  }
+});

@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Edit Profile - ProxyFlow Pro</title>
+  <title>Edit Profile - ProxyFlow</title>
   <style>
     * {
       margin: 0;
@@ -30,6 +30,7 @@
       width: 360px;
       padding: 15px;
       animation: fadeIn 0.4s ease;
+      overflow: hidden;
     }
     
     header {
@@ -135,7 +136,6 @@
     
     .btn-primary:hover {
       background: var(--primary-dark);
-      transform: translateY(-1px);
     }
     
     .btn-primary:active {
@@ -169,6 +169,19 @@
     
     .action-row .btn {
       flex: 1;
+    }
+    
+    .optional-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-style: italic;
+      margin-left: 5px;
+    }
+    
+    .delete-container {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
     }
     
     @keyframes fadeIn {
@@ -218,17 +231,27 @@
     </div>
     
     <div class="form-group">
-      <label for="username">Username (optional)</label>
+      <label for="username">
+        Username 
+        <span class="optional-label">(optional)</span>
+      </label>
       <input type="text" id="username" placeholder="username">
     </div>
     
     <div class="form-group">
-      <label for="password">Password (optional)</label>
+      <label for="password">
+        Password 
+        <span class="optional-label">(optional)</span>
+      </label>
       <input type="password" id="password" placeholder="••••••••">
     </div>
     
     <div class="action-row">
       <button id="saveBtn" class="btn btn-primary">Save Profile</button>
+    </div>
+    
+    <div class="delete-container" id="deleteContainer">
+      <button id="deleteProfileBtn" class="btn btn-danger">Delete Profile</button>
     </div>
   </div>
   

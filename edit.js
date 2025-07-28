@@ -9,14 +9,15 @@ const elements = {
   editTitle: document.getElementById('editTitle'),
   nameError: document.getElementById('nameError'),
   hostError: document.getElementById('hostError'),
-  portError: document.getElementById('portError')
+  portError: document.getElementById('portError'),
+  deleteContainer: document.getElementById('deleteContainer'),
+  deleteProfileBtn: document.getElementById('deleteProfileBtn')
 };
 
 let profileId = null;
+let isGoingBack = false;
 
-// Инициализация
 document.addEventListener('DOMContentLoaded', async () => {
-  // Получаем ID профиля из параметров URL
   const urlParams = new URLSearchParams(window.location.search);
   profileId = urlParams.get('profileId');
   
@@ -25,30 +26,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadProfile();
   } else {
     elements.editTitle.textContent = 'New Profile';
+    elements.deleteContainer.style.display = 'none';
   }
   
   setupEventListeners();
 });
 
-// Настройка обработчиков событий
 function setupEventListeners() {
   elements.backBtn.addEventListener('click', goBack);
   elements.saveBtn.addEventListener('click', saveProfile);
-  
-  // Валидация в реальном времени
   elements.profileName.addEventListener('input', validateName);
   elements.host.addEventListener('input', validateHost);
   elements.port.addEventListener('input', validatePort);
+  
+  if (profileId) {
+    elements.deleteProfileBtn.addEventListener('click', deleteCurrentProfile);
+  }
 }
 
-// Загрузка профиля
 async function loadProfile() {
   try {
     const state = await new Promise(resolve => {
-      chrome.runtime.sendMessage(
-        {type: "GET_PROXY_DATA"}, 
-        resolve
-      );
+      chrome.runtime.sendMessage({type: "GET_PROXY_DATA"}, resolve);
     });
     
     const profile = state.profiles.find(p => p.id === profileId);
@@ -58,8 +57,6 @@ async function loadProfile() {
       elements.port.value = profile.port || '';
       elements.username.value = profile.username || '';
       elements.password.value = profile.password || '';
-      
-      // Валидация загруженных данных
       validateName();
       validateHost();
       validatePort();
@@ -69,21 +66,18 @@ async function loadProfile() {
   }
 }
 
-// Валидация имени
 function validateName() {
   const isValid = elements.profileName.value.trim() !== '';
   toggleError(elements.profileName, elements.nameError, !isValid);
   return isValid;
 }
 
-// Валидация хоста
 function validateHost() {
   const isValid = elements.host.value.trim() !== '';
   toggleError(elements.host, elements.hostError, !isValid);
   return isValid;
 }
 
-// Валидация порта
 function validatePort() {
   const port = parseInt(elements.port.value);
   const isValid = !isNaN(port) && port > 0 && port <= 65535;
@@ -91,7 +85,6 @@ function validatePort() {
   return isValid;
 }
 
-// Переключение состояния ошибки
 function toggleError(input, errorElement, showError) {
   if (showError) {
     input.classList.add('error');
@@ -102,15 +95,12 @@ function toggleError(input, errorElement, showError) {
   }
 }
 
-// Сохранение профиля
 async function saveProfile() {
   const nameValid = validateName();
   const hostValid = validateHost();
   const portValid = validatePort();
   
-  if (!nameValid || !hostValid || !portValid) {
-    return;
-  }
+  if (!nameValid || !hostValid || !portValid) return;
   
   const profile = {
     id: profileId,
@@ -125,16 +115,11 @@ async function saveProfile() {
     setButtonState(elements.saveBtn, 'Saving...', true);
     
     const result = await new Promise(resolve => {
-      chrome.runtime.sendMessage(
-        {type: "SAVE_PROFILE", profile}, 
-        resolve
-      );
+      chrome.runtime.sendMessage({type: "SAVE_PROFILE", profile}, resolve);
     });
     
     if (result.success) {
-      // Анимация успешного сохранения
-      elements.saveBtn.classList.add('success');
-      setTimeout(() => goBack(), 300);
+      setTimeout(goBack, 300);
     } else if (result.error) {
       alert(result.error);
     }
@@ -146,13 +131,41 @@ async function saveProfile() {
   }
 }
 
-// Возврат на главный экран
-function goBack() {
-  document.body.style.opacity = '0';
-  setTimeout(() => window.location.href = 'popup.html', 300);
+async function deleteCurrentProfile() {
+  if (!profileId) return;
+  
+  if (!confirm("Are you sure you want to delete this profile?")) {
+    return;
+  }
+  
+  try {
+    const result = await new Promise(resolve => {
+      chrome.runtime.sendMessage(
+        {type: "DELETE_PROFILE", profileId: profileId}, 
+        resolve
+      );
+    });
+    
+    if (result.success) {
+      goBack();
+    } else {
+      alert("Failed to delete profile");
+    }
+  } catch (error) {
+    console.error("Failed to delete profile:", error);
+    alert("Failed to delete profile");
+  }
 }
 
-// Управление состоянием кнопок
+function goBack() {
+  if (isGoingBack) return;
+  isGoingBack = true;
+  document.body.style.opacity = '0';
+  setTimeout(() => {
+    window.location.href = 'popup.html';
+  }, 300);
+}
+
 function setButtonState(button, text, isLoading) {
   button.textContent = text;
   

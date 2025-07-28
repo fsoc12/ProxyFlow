@@ -1,8 +1,8 @@
 ﻿<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ProxyFlow Pro</title>
+  <title>ProxyFlow</title>
   <style>
     * {
       margin: 0;
@@ -31,7 +31,7 @@
       width: 360px;
       padding: 15px;
       animation: fadeIn 0.4s ease;
-      overflow-x: hidden; /* Убираем горизонтальную прокрутку */
+      overflow: hidden;
     }
     
     header {
@@ -120,7 +120,6 @@
     
     .btn-primary:hover {
       background: var(--primary-dark);
-      transform: translateY(-1px);
     }
     
     .btn-primary:active {
@@ -134,11 +133,6 @@
     
     .btn-danger:hover {
       background: #e60000;
-      transform: translateY(-1px);
-    }
-    
-    .btn-danger:active {
-      transform: translateY(0);
     }
     
     .btn-secondary {
@@ -149,11 +143,6 @@
     
     .btn-secondary:hover {
       background: rgba(255, 255, 255, 0.05);
-      transform: translateY(-1px);
-    }
-    
-    .btn-secondary:active {
-      transform: translateY(0);
     }
     
     .section-title {
@@ -195,11 +184,14 @@
       border: 1px solid transparent;
       transition: var(--transition);
       animation: fadeIn 0.3s ease;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      position: relative;
     }
     
     .profile-item:hover {
       border-color: var(--border);
-      transform: translateX(2px);
     }
     
     .profile-item.active {
@@ -210,7 +202,6 @@
     .profile-item.selected {
       border-color: var(--primary);
       background: rgba(0, 204, 102, 0.2);
-      transform: translateX(0);
     }
     
     .profile-name {
@@ -218,6 +209,8 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     
     .profile-details {
@@ -326,7 +319,7 @@
 <body>
   <header>
     <div class="logo">P</div>
-    <h1>ProxyFlow Pro</h1>
+    <h1>ProxyFlow</h1>
   </header>
   
   <div class="card status-card">
@@ -351,6 +344,7 @@
     <div class="action-buttons">
       <button id="newProfileBtn" class="btn btn-secondary">New Profile</button>
       <button id="editBtn" class="btn btn-secondary hidden">Edit</button>
+      <button id="deleteBtn" class="btn btn-danger hidden">Delete</button>
     </div>
   </div>
   
